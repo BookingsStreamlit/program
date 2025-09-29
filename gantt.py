@@ -131,7 +131,7 @@ gantt_chart_html = """
             }
             body { padding: 0 !important; margin: 0 !important; background-color: #fff !important; overflow: visible; }
             .main-container { height: auto; }
-            header > div:last-child, footer, #task-modal, #group-modal, .gantt-tooltip, .gantt-bar-handle, .resizer {
+            header > div:last-child, footer, #task-modal, #group-modal, .gantt-tooltip, .gantt-bar-handle, .resizer, #dependency-modal {
                 display: none !important;
             }
             .max-w-7xl { margin: 0 !important; max-width: 100% !important; border: none !important; overflow: visible !important; }
@@ -200,7 +200,7 @@ gantt_chart_html = """
         </footer>
     </div>
     
-    <!-- Modals remain the same -->
+    <!-- Modals -->
     <div id="group-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <h2 class="text-xl font-bold text-gray-800 mb-4">Manage Groups</h2>
@@ -266,6 +266,22 @@ gantt_chart_html = """
         </div>
     </div>
 
+    <!-- Dependency Confirmation Modal -->
+    <div id="dependency-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">Update Dependent Tasks?</h2>
+            <p id="dependency-modal-text" class="text-sm text-gray-600 mb-4">Changing this task's dates will affect the following dependent tasks. Do you want to automatically shift their dates?</p>
+            <div id="dependent-tasks-list" class="mb-4 max-h-40 overflow-y-auto pr-2 space-y-2 text-sm">
+                <!-- Dependent tasks will be listed here -->
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" id="cancel-dependency-update" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button type="button" id="confirm-dependency-update" class="px-4 py-2 text-white rounded-lg" style="background-color: #006152;">Yes, Update</button>
+            </div>
+        </div>
+    </div>
+
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- STATE & CONFIGURATION ---
@@ -316,13 +332,16 @@ gantt_chart_html = """
             const closeGroupModalBtn = document.getElementById('close-group-modal-btn');
             const addGroupForm = document.getElementById('add-group-form');
             const groupListEl = document.getElementById('group-list');
+            // New modal elements
+            const dependencyModal = document.getElementById('dependency-modal');
+            const dependentTasksListEl = document.getElementById('dependent-tasks-list');
 
             // --- UTILITY FUNCTIONS ---
             const formatDateToDDMMYYYY = (date) => {
                 if (!date || isNaN(date.getTime())) return '';
-                const day = String(date.getDate()).padStart(2, '0');
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const year = date.getFullYear();
+                const day = String(date.getUTCDate()).padStart(2, '0');
+                const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                const year = date.getUTCFullYear();
                 return `${day}/${month}/${year}`;
             };
 
@@ -368,7 +387,8 @@ gantt_chart_html = """
                 const start = parseDate(startDateStr);
                 const end = parseDate(endDateStr);
                 if (!start || !end) return 0;
-                return Math.round((end - start) / msPerDay);
+                // Add a small epsilon to handle floating point issues with timezones
+                return Math.round((end - start) / msPerDay + 0.00001);
             };
 
             const showToast = (message, isError = false, needsConfirmation = false) => {
@@ -456,8 +476,35 @@ gantt_chart_html = """
                 };
                 setTimeout(() => { clearDataBtn.onclick = clearState; }, 3000);
             };
-            
+
             // --- DEPENDENCY LOGIC ---
+
+            const showDependencyModal = (conflictingDependents, onConfirm, onCancel) => {
+                dependentTasksListEl.innerHTML = conflictingDependents.map(d => `<p class="p-2 bg-gray-100 rounded-md">#${d.id}: ${d.name}</p>`).join('');
+                
+                dependencyModal.classList.remove('hidden');
+                dependencyModal.classList.add('flex');
+
+                const cleanupAndRemoveListeners = () => {
+                    dependencyModal.classList.add('hidden');
+                    dependencyModal.classList.remove('flex');
+                    // Re-clone the buttons to effectively remove all attached event listeners
+                    const confirmBtn = document.getElementById('confirm-dependency-update');
+                    const cancelBtn = document.getElementById('cancel-dependency-update');
+                    confirmBtn.replaceWith(confirmBtn.cloneNode(true));
+                    cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+                };
+
+                document.getElementById('confirm-dependency-update').onclick = () => {
+                    onConfirm();
+                    cleanupAndRemoveListeners();
+                };
+                document.getElementById('cancel-dependency-update').onclick = () => {
+                    onCancel();
+                    cleanupAndRemoveListeners();
+                };
+            };
+            
             const cascadeUpdates = (updatedTaskId) => {
                 const queue = [parseInt(updatedTaskId)];
                 const processed = new Set(); 
@@ -596,33 +643,76 @@ gantt_chart_html = """
 
             const handleDragEnd = (e) => {
                 if (!isDragging || !currentTaskId) return;
-                isDragging = false;
-                document.body.classList.remove('select-none');
+                
                 const task = tasks.find(t => t.id === currentTaskId);
+                if (!task) { isDragging = false; return; }
+
+                document.body.classList.remove('select-none');
+                
                 const barWrapper = ganttChartEl.querySelector(`.gantt-bar-wrapper[data-task-bar-id="${currentTaskId}"]`);
-                if (!task || !barWrapper) return;
-                barWrapper.style.zIndex = 10;
+                if (barWrapper) barWrapper.style.zIndex = 10;
+                
+                isDragging = false;
+
                 const finalDeltaX = e.clientX - dragStartPos;
                 const finalDayShift = Math.round(finalDeltaX / pixelsPerDay);
+
                 if (finalDayShift === 0 && dragType !== 'resize-left' && dragType !== 'resize-right') {
-                    barWrapper.style.left = `${dragStartStyles.left}px`;
-                    barWrapper.style.width = `${dragStartStyles.width}px`;
+                    renderGanttChart(); // Snap back if no change
                     return;
                 }
+                
+                const updatedTaskData = { ...task };
+                let newStart, newEnd;
+                
                 if (dragType === 'move') {
-                    const newStart = addDays(parseDate(originalTaskData.start), finalDayShift);
-                    task.start = formatDateToDDMMYYYY(newStart);
-                    task.end = formatDateToDDMMYYYY(addDays(newStart, dayDiff(originalTaskData.start, originalTaskData.end)));
+                    newStart = addDays(parseDate(originalTaskData.start), finalDayShift);
+                    newEnd = addDays(newStart, dayDiff(originalTaskData.start, originalTaskData.end));
                 } else if (dragType === 'resize-right') {
-                    const newEnd = addDays(parseDate(originalTaskData.end), finalDayShift);
-                    if (newEnd >= parseDate(task.start)) { task.end = formatDateToDDMMYYYY(newEnd); }
-                } else if (dragType === 'resize-left') {
-                    const newStart = addDays(parseDate(originalTaskData.start), finalDayShift);
-                    if (newStart <= parseDate(task.end)) { task.start = formatDateToDDMMYYYY(newStart); }
+                    newStart = parseDate(task.start);
+                    newEnd = addDays(parseDate(originalTaskData.end), finalDayShift);
+                    if (newEnd < newStart) newEnd = newStart;
+                } else { // resize-left
+                    newEnd = parseDate(task.end);
+                    newStart = addDays(parseDate(originalTaskData.start), finalDayShift);
+                    if (newStart > newEnd) newStart = newEnd;
                 }
-                cascadeUpdates(currentTaskId);
-                renderGanttChart();
-                saveState();
+
+                updatedTaskData.start = formatDateToDDMMYYYY(newStart);
+                updatedTaskData.end = formatDateToDDMMYYYY(newEnd);
+
+                const dependents = tasks.filter(t => t.dependencies?.split(',').map(d => parseInt(d.trim())).includes(currentTaskId));
+                const conflictingDependents = [];
+                const newParentEndDate = parseDate(updatedTaskData.end);
+
+                dependents.forEach(dep => {
+                    if (addDays(parseDate(dep.start), -1) < newParentEndDate) {
+                        conflictingDependents.push(dep);
+                    }
+                });
+
+                const performUpdate = () => {
+                    const taskIndex = tasks.findIndex(t => t.id === currentTaskId);
+                    if(taskIndex !== -1) tasks[taskIndex] = updatedTaskData;
+                    cascadeUpdates(currentTaskId);
+                    renderGanttChart();
+                    saveState();
+                };
+
+                if (conflictingDependents.length > 0) {
+                    showDependencyModal(conflictingDependents, 
+                        () => { // onConfirm
+                            performUpdate();
+                        },
+                        () => { // onCancel - just re-render to snap back
+                            renderGanttChart(); 
+                        }
+                    );
+                } else {
+                    performUpdate();
+                }
+
+                currentTaskId = null;
             };
             
             // --- MODAL & DATA LOGIC ---
@@ -631,8 +721,8 @@ gantt_chart_html = """
                 const id = document.getElementById('task-id').value;
                 const name = document.getElementById('task-name').value;
                 const group = document.getElementById('task-group').value;
-                const startValue = document.getElementById('task-start').value; // YYYY-MM-DD
-                const endValue = document.getElementById('task-end').value; // YYYY-MM-DD
+                const startValue = document.getElementById('task-start').value;
+                const endValue = document.getElementById('task-end').value;
                 const progress = parseInt(document.getElementById('task-progress').value, 10);
                 const colorInput = document.getElementById('task-color');
                 const color = colorInput.disabled ? null : colorInput.value;
@@ -644,26 +734,45 @@ gantt_chart_html = """
                     return;
                 }
 
-                const finalTaskData = {
-                    name, group,
-                    start: formatDateToDDMMYYYY(parseDate(startValue)),
-                    end: formatDateToDDMMYYYY(parseDate(endValue)),
-                    progress, dependencies, color
+                const finalTaskData = { name, group, start: formatDateToDDMMYYYY(parseDate(startValue)), end: formatDateToDDMMYYYY(parseDate(endValue)), progress, dependencies, color };
+
+                const performUpdate = (isNew = false) => {
+                    if (isNew) {
+                        const newId = tasks.length > 0 ? Math.max(...tasks.map(t => t.id)) + 1 : 1;
+                        tasks.push({ id: newId, ...finalTaskData });
+                    } else {
+                        const taskIndex = tasks.findIndex(t => t.id == id);
+                        if (taskIndex !== -1) {
+                            tasks[taskIndex] = { ...tasks[taskIndex], ...finalTaskData };
+                            cascadeUpdates(parseInt(id));
+                        }
+                    }
+                    renderGanttChart();
+                    closeModal();
+                    saveState();
                 };
 
-                if (id) {
-                    const taskIndex = tasks.findIndex(t => t.id == id);
-                    if (taskIndex !== -1) {
-                        tasks[taskIndex] = { ...tasks[taskIndex], ...finalTaskData };
-                        cascadeUpdates(id);
+                if (id) { // Editing existing task
+                    const dependents = tasks.filter(t => t.dependencies?.split(',').map(d => parseInt(d.trim())).includes(parseInt(id)));
+                    const conflictingDependents = [];
+                    const newParentEndDate = parseDate(finalTaskData.end);
+                    dependents.forEach(dep => {
+                        if (addDays(parseDate(dep.start), -1) < newParentEndDate) {
+                            conflictingDependents.push(dep);
+                        }
+                    });
+
+                    if (conflictingDependents.length > 0) {
+                         showDependencyModal(conflictingDependents, 
+                            () => performUpdate(false), // onConfirm
+                            () => {} // onCancel: Do nothing, just close the dependency modal. The task modal remains open for correction.
+                        );
+                    } else {
+                        performUpdate(false);
                     }
-                } else {
-                    const newId = tasks.length > 0 ? Math.max(...tasks.map(t => t.id)) + 1 : 1;
-                    tasks.push({ id: newId, ...finalTaskData });
+                } else { // Adding new task
+                    performUpdate(true);
                 }
-                renderGanttChart();
-                closeModal();
-                saveState();
             };
 
             const deleteTask = () => {
@@ -952,13 +1061,16 @@ gantt_chart_html = """
                 document.documentElement.style.setProperty('--task-name-width', `${columnWidths.taskName}px`);
                 document.documentElement.style.setProperty('--deps-width', `${columnWidths.deps}px`);
                 if (tasks.length === 0) {
-                    ganttChartEl.innerHTML = `<div class="text-center p-10 text-gray-500 col-span-full">No tasks yet.</div>`;
+                    ganttChartEl.innerHTML = `<div class="text-center p-10 text-gray-500 col-span-full">No tasks yet. Click '+ Add Task' to begin.</div>`;
                     return;
                 }
                 const groupColors = Object.fromEntries(projectGroups.map(g => [g.name, g.color]));
                 tasks.sort((a, b) => (a.group || 'zzzz').localeCompare(b.group || 'zzzz') || parseDate(a.start) - parseDate(b.start));
                 const allDates = tasks.flatMap(t => [parseDate(t.start), parseDate(t.end)]).filter(d => d && !isNaN(d));
-                if (allDates.length === 0) return;
+                if (allDates.length === 0) {
+                    ganttChartEl.innerHTML = `<div class="text-center p-10 text-gray-500 col-span-full">No valid dates found in tasks.</div>`;
+                    return;
+                };
                 chartStartDate = addDays(new Date(Math.min(...allDates)), -2);
                 let chartEndDate = addDays(new Date(Math.max(...allDates)), 2);
                 let headers = [];
@@ -967,46 +1079,43 @@ gantt_chart_html = """
                     let d = new Date(chartStartDate);
                     while (d <= chartEndDate) {
                         headers.push({
-                            label: d.getDate(),
-                            subLabel: d.getDate() === 1 || headers.length === 0 ? d.toLocaleString('default', {
-                                month: 'short'
-                            }) : '',
-                            isWeekend: [0, 6].includes(d.getDay()),
+                            label: d.getUTCDate(),
+                            subLabel: d.getUTCDate() === 1 || headers.length === 0 ? d.toLocaleString('default', { month: 'short', timeZone: 'UTC' }) : '',
+                            isWeekend: [0, 6].includes(d.getUTCDay()),
                             startDate: new Date(d),
                             days: 1
                         });
                         d = addDays(d, 1);
                     }
                 } else {
-                    let unitStartDate = new Date(chartStartDate);
+                     let unitStartDate = new Date(chartStartDate);
                     while (unitStartDate <= chartEndDate) {
                         let unitEndDate, label, subLabel;
+                        const year = unitStartDate.getUTCFullYear();
                         if (viewMode === 'week') {
-                            const day = unitStartDate.getDay();
-                            unitStartDate.setDate(unitStartDate.getDate() - day);
-                            unitEndDate = addDays(unitStartDate, 6);
-                            label = `W${Math.ceil((unitStartDate.getDate() + day) / 7)}`;
-                            subLabel = `${unitStartDate.getDate()}/${unitStartDate.getMonth()+1}`;
+                            const dayOfWeek = unitStartDate.getUTCDay();
+                            const startOfWeek = addDays(unitStartDate, -dayOfWeek);
+                            unitEndDate = addDays(startOfWeek, 6);
+                            const weekNum = Math.ceil(( (startOfWeek - new Date(Date.UTC(year, 0, 1))) / 86400000 + 1) / 7);
+                            label = `W${weekNum}`;
+                            subLabel = `${startOfWeek.getUTCDate()}/${startOfWeek.getUTCMonth() + 1}`;
+
                         } else if (viewMode === 'month') {
-                            unitStartDate = new Date(unitStartDate.getFullYear(), unitStartDate.getMonth(), 1);
-                            unitEndDate = new Date(unitStartDate.getFullYear(), unitStartDate.getMonth() + 1, 0);
-                            label = unitStartDate.toLocaleString('default', {
-                                month: 'short',
-                                year: 'numeric'
-                            });
+                            unitStartDate = new Date(Date.UTC(year, unitStartDate.getUTCMonth(), 1));
+                            unitEndDate = new Date(Date.UTC(year, unitStartDate.getUTCMonth() + 1, 0));
+                            label = unitStartDate.toLocaleString('default', { month: 'short', year: 'numeric', timeZone: 'UTC' });
                         } else if (viewMode === 'quarter') {
-                            const q = Math.floor(unitStartDate.getMonth() / 3);
-                            unitStartDate = new Date(unitStartDate.getFullYear(), q * 3, 1);
-                            unitEndDate = new Date(unitStartDate.getFullYear(), unitStartDate.getMonth() + 3, 0);
-                            label = `Q${q + 1} ${unitStartDate.getFullYear()}`;
+                            const q = Math.floor(unitStartDate.getUTCMonth() / 3);
+                            unitStartDate = new Date(Date.UTC(year, q * 3, 1));
+                            unitEndDate = new Date(Date.UTC(year, unitStartDate.getUTCMonth() + 3, 0));
+                            label = `Q${q + 1} ${year}`;
                         } else if (viewMode === 'year') {
-                            unitStartDate = new Date(unitStartDate.getFullYear(), 0, 1);
-                            unitEndDate = new Date(unitStartDate.getFullYear(), 11, 31);
-                            label = unitStartDate.getFullYear();
+                            unitStartDate = new Date(Date.UTC(year, 0, 1));
+                            unitEndDate = new Date(Date.UTC(year, 11, 31));
+                            label = year;
                         }
                         headers.push({
-                            label,
-                            subLabel,
+                            label, subLabel,
                             startDate: new Date(unitStartDate),
                             days: dayDiff(formatDateToYYYYMMDD(unitStartDate), formatDateToYYYYMMDD(unitEndDate)) + 1
                         });
@@ -1179,5 +1288,4 @@ gantt_chart_html = """
 # The `height` parameter is set to ensure the component has enough space.
 # `scrolling=True` allows the inner content to scroll if it overflows the height.
 components.html(gantt_chart_html, height=800, scrolling=True)
-
 
