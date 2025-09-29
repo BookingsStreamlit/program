@@ -332,37 +332,34 @@ gantt_chart_html = """
             };
 
             const parseDate = (dateStr) => {
-                if (!dateStr || typeof dateStr !== 'string') return null;
+                if (!dateStr) return null;
+                if (dateStr instanceof Date) { // Handle date objects directly
+                    return new Date(Date.UTC(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate()));
+                }
+                if (typeof dateStr !== 'string') return null;
 
                 // Try parsing dd/mm/yyyy
                 const partsDMY = dateStr.split('/');
                 if (partsDMY.length === 3) {
                     const [day, month, year] = partsDMY.map(Number);
                     if (year > 1000 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-                        return new Date(year, month - 1, day);
+                        return new Date(Date.UTC(year, month - 1, day));
                     }
                 }
-
                 // Try parsing yyyy-mm-dd
                 const partsYMD = dateStr.split('-');
                 if (partsYMD.length === 3) {
                     const [year, month, day] = partsYMD.map(Number);
                     if (year > 1000 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-                        return new Date(year, month - 1, day);
+                        return new Date(Date.UTC(year, month - 1, day));
                     }
                 }
-                
-                // Fallback for Excel dates which might be Date objects
-                if (dateStr instanceof Date) {
-                    return new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate());
-                }
-
                 return null;
             };
 
             const addDays = (date, days) => {
                 const result = new Date(date);
-                result.setDate(result.getDate() + days);
+                result.setUTCDate(result.getUTCDate() + days);
                 return result;
             };
 
@@ -1182,4 +1179,5 @@ gantt_chart_html = """
 # The `height` parameter is set to ensure the component has enough space.
 # `scrolling=True` allows the inner content to scroll if it overflows the height.
 components.html(gantt_chart_html, height=800, scrolling=True)
+
 
