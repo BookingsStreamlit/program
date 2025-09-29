@@ -332,9 +332,10 @@ gantt_chart_html = """
             const closeGroupModalBtn = document.getElementById('close-group-modal-btn');
             const addGroupForm = document.getElementById('add-group-form');
             const groupListEl = document.getElementById('group-list');
-            // New modal elements
             const dependencyModal = document.getElementById('dependency-modal');
             const dependentTasksListEl = document.getElementById('dependent-tasks-list');
+            const confirmDependencyUpdateBtn = document.getElementById('confirm-dependency-update');
+            const cancelDependencyUpdateBtn = document.getElementById('cancel-dependency-update');
 
             // --- UTILITY FUNCTIONS ---
             const formatDateToDDMMYYYY = (date) => {
@@ -478,31 +479,29 @@ gantt_chart_html = """
             };
 
             // --- DEPENDENCY LOGIC ---
-
             const showDependencyModal = (conflictingDependents, onConfirm, onCancel) => {
                 dependentTasksListEl.innerHTML = conflictingDependents.map(d => `<p class="p-2 bg-gray-100 rounded-md">#${d.id}: ${d.name}</p>`).join('');
-                
                 dependencyModal.classList.remove('hidden');
                 dependencyModal.classList.add('flex');
 
-                const cleanupAndRemoveListeners = () => {
+                const confirmHandler = () => {
+                    cleanup();
+                    onConfirm();
+                };
+                const cancelHandler = () => {
+                    cleanup();
+                    onCancel();
+                };
+                
+                const cleanup = () => {
                     dependencyModal.classList.add('hidden');
                     dependencyModal.classList.remove('flex');
-                    // Re-clone the buttons to effectively remove all attached event listeners
-                    const confirmBtn = document.getElementById('confirm-dependency-update');
-                    const cancelBtn = document.getElementById('cancel-dependency-update');
-                    confirmBtn.replaceWith(confirmBtn.cloneNode(true));
-                    cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+                    confirmDependencyUpdateBtn.removeEventListener('click', confirmHandler);
+                    cancelDependencyUpdateBtn.removeEventListener('click', cancelHandler);
                 };
 
-                document.getElementById('confirm-dependency-update').onclick = () => {
-                    onConfirm();
-                    cleanupAndRemoveListeners();
-                };
-                document.getElementById('cancel-dependency-update').onclick = () => {
-                    onCancel();
-                    cleanupAndRemoveListeners();
-                };
+                confirmDependencyUpdateBtn.addEventListener('click', confirmHandler, { once: true });
+                cancelDependencyUpdateBtn.addEventListener('click', cancelHandler, { once: true });
             };
             
             const cascadeUpdates = (updatedTaskId) => {
@@ -1286,6 +1285,6 @@ gantt_chart_html = """
 
 # Use Streamlit's component function to render the HTML.
 # The `height` parameter is set to ensure the component has enough space.
-# `scrolling=True` allows the inner content to scroll if it overflows the height.
-components.html(gantt_chart_html, height=800, scrolling=True)
+# `scrolling`=True allows the inner content to scroll if it overflows the height.
+components.html(gantt_chart_html, height=900, scrolling=True)
 
