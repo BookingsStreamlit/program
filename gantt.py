@@ -1158,4 +1158,4 @@ gantt_chart_html = """
 # Use Streamlit's component function to render the HTML.
 # The `height` parameter is set to ensure the component has enough space.
 # `scrolling=True` allows the inner content to scroll if it overflows the height.
-components.html(gantt_chart_html, height=1000, scrolling=True)
+components.html(gantt_chart_html, height=800, scrolling=True)
