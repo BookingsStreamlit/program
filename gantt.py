@@ -333,6 +333,7 @@ gantt_chart_html = """
             const addGroupForm = document.getElementById('add-group-form');
             const groupListEl = document.getElementById('group-list');
             const dependencyModal = document.getElementById('dependency-modal');
+            const dependencyModalText = document.getElementById('dependency-modal-text');
             const dependentTasksListEl = document.getElementById('dependent-tasks-list');
             const confirmDependencyUpdateBtn = document.getElementById('confirm-dependency-update');
             const cancelDependencyUpdateBtn = document.getElementById('cancel-dependency-update');
@@ -479,10 +480,18 @@ gantt_chart_html = """
             };
 
             // --- DEPENDENCY LOGIC ---
-            const showDependencyModal = (conflictingDependents, onConfirm, onCancel) => {
-                dependentTasksListEl.innerHTML = conflictingDependents.map(d => `<p class="p-2 bg-gray-100 rounded-md">#${d.id}: ${d.name}</p>`).join('');
+            const showDependencyModal = (updatePlan, text, onConfirm, onCancel) => {
+                dependencyModalText.textContent = text;
+                dependentTasksListEl.innerHTML = updatePlan.map(d => `<p class="p-2 bg-gray-100 rounded-md">#${d.id}: ${d.name}</p>`).join('');
                 dependencyModal.classList.remove('hidden');
                 dependencyModal.classList.add('flex');
+
+                const cleanup = () => {
+                    dependencyModal.classList.add('hidden');
+                    dependencyModal.classList.remove('flex');
+                    confirmDependencyUpdateBtn.removeEventListener('click', confirmHandler);
+                    cancelDependencyUpdateBtn.removeEventListener('click', cancelHandler);
+                };
 
                 const confirmHandler = () => {
                     cleanup();
@@ -492,48 +501,66 @@ gantt_chart_html = """
                     cleanup();
                     onCancel();
                 };
-                
-                const cleanup = () => {
-                    dependencyModal.classList.add('hidden');
-                    dependencyModal.classList.remove('flex');
-                    confirmDependencyUpdateBtn.removeEventListener('click', confirmHandler);
-                    cancelDependencyUpdateBtn.removeEventListener('click', cancelHandler);
-                };
 
                 confirmDependencyUpdateBtn.addEventListener('click', confirmHandler, { once: true });
                 cancelDependencyUpdateBtn.addEventListener('click', cancelHandler, { once: true });
             };
-            
-            const cascadeUpdates = (updatedTaskId) => {
-                const queue = [parseInt(updatedTaskId)];
-                const processed = new Set(); 
-                
+
+            const getDependencyUpdatePlan = (parentTask, proposedParentEndDate) => {
+                const updatePlan = new Map();
+                const queue = [{ taskId: parentTask.id, newEndDate: proposedParentEndDate }];
+                const processed = new Set([parentTask.id]);
+
                 while (queue.length > 0) {
-                    const currentParentId = queue.shift();
-                    if (processed.has(currentParentId)) continue;
-                    processed.add(currentParentId);
-                    
-                    const children = tasks.filter(t => 
-                        t.dependencies && t.dependencies.split(',').map(d => parseInt(d.trim())).includes(currentParentId)
-                    );
+                    const { taskId, newEndDate } = queue.shift();
 
-                    children.forEach(child => {
-                        const parentIds = child.dependencies.split(',').map(d => d.trim());
-                        const parentTasks = tasks.filter(t => parentIds.includes(String(t.id)));
+                    const children = tasks.filter(t => t.dependencies?.split(',').map(d => parseInt(d.trim())).includes(taskId));
 
-                        if (parentTasks.length > 0) {
-                            const latestParentEndDate = new Date(Math.max(...parentTasks.map(p => parseDate(p.end))));
-                            const minRequiredStartDate = addDays(latestParentEndDate, 1);
-                            
-                            if (parseDate(child.start) < minRequiredStartDate) {
-                                const childDurationDiff = dayDiff(child.start, child.end);
-                                child.start = formatDateToDDMMYYYY(minRequiredStartDate);
-                                child.end = formatDateToDDMMYYYY(addDays(minRequiredStartDate, childDurationDiff));
-                                queue.push(child.id);
+                    for (const child of children) {
+                        const allParentIds = child.dependencies.split(',').map(d => parseInt(d.trim()));
+                        let latestParentEndDate = null;
+
+                        for (const parentId of allParentIds) {
+                            let parentEndDate;
+                            if (parentId === taskId) {
+                                parentEndDate = newEndDate;
+                            } else if (updatePlan.has(parentId)) {
+                                parentEndDate = parseDate(updatePlan.get(parentId).end);
+                            } else {
+                                const parentTaskData = tasks.find(t => t.id === parentId);
+                                parentEndDate = parentTaskData ? parseDate(parentTaskData.end) : null;
+                            }
+
+                            if (!latestParentEndDate || (parentEndDate && parentEndDate > latestParentEndDate)) {
+                                latestParentEndDate = parentEndDate;
                             }
                         }
-                    });
+                        
+                        if (latestParentEndDate) {
+                            const requiredChildStartDate = addDays(latestParentEndDate, 1);
+                            const currentChildStartDate = parseDate(child.start);
+                            
+                            if (requiredChildStartDate.getTime() !== currentChildStartDate.getTime()) {
+                                const duration = dayDiff(child.start, child.end);
+                                const newChildStartDate = requiredChildStartDate;
+                                const newChildEndDate = addDays(newChildStartDate, duration);
+
+                                if (!updatePlan.has(child.id)) {
+                                     updatePlan.set(child.id, {
+                                        ...child,
+                                        start: formatDateToDDMMYYYY(newChildStartDate),
+                                        end: formatDateToDDMMYYYY(newChildEndDate),
+                                    });
+                                     if (!processed.has(child.id)) {
+                                        queue.push({ taskId: child.id, newEndDate: newChildEndDate });
+                                        processed.add(child.id);
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
+                return Array.from(updatePlan.values());
             };
 
             // --- COLUMN RESIZING LOGIC ---
@@ -577,7 +604,7 @@ gantt_chart_html = """
                 document.removeEventListener('mousemove', handleResizeMove);
                 document.removeEventListener('mouseup', handleResizeEnd);
                 saveState();
-                renderGanttChart(); // Re-render to adjust timeline calculations
+                renderGanttChart();
             };
 
             // --- DRAG-AND-DROP LOGIC ---
@@ -652,12 +679,10 @@ gantt_chart_html = """
                 if (barWrapper) barWrapper.style.zIndex = 10;
                 
                 isDragging = false;
-
-                const finalDeltaX = e.clientX - dragStartPos;
-                const finalDayShift = Math.round(finalDeltaX / pixelsPerDay);
+                const finalDayShift = Math.round((e.clientX - dragStartPos) / pixelsPerDay);
 
                 if (finalDayShift === 0 && dragType !== 'resize-left' && dragType !== 'resize-right') {
-                    renderGanttChart(); // Snap back if no change
+                    renderGanttChart();
                     return;
                 }
                 
@@ -671,7 +696,7 @@ gantt_chart_html = """
                     newStart = parseDate(task.start);
                     newEnd = addDays(parseDate(originalTaskData.end), finalDayShift);
                     if (newEnd < newStart) newEnd = newStart;
-                } else { // resize-left
+                } else {
                     newEnd = parseDate(task.end);
                     newStart = addDays(parseDate(originalTaskData.start), finalDayShift);
                     if (newStart > newEnd) newStart = newEnd;
@@ -680,37 +705,35 @@ gantt_chart_html = """
                 updatedTaskData.start = formatDateToDDMMYYYY(newStart);
                 updatedTaskData.end = formatDateToDDMMYYYY(newEnd);
 
-                const dependents = tasks.filter(t => t.dependencies?.split(',').map(d => parseInt(d.trim())).includes(currentTaskId));
-                const conflictingDependents = [];
-                const newParentEndDate = parseDate(updatedTaskData.end);
-
-                dependents.forEach(dep => {
-                    if (addDays(parseDate(dep.start), -1) < newParentEndDate) {
-                        conflictingDependents.push(dep);
-                    }
-                });
+                const updatePlan = getDependencyUpdatePlan(task, parseDate(updatedTaskData.end));
 
                 const performUpdate = () => {
                     const taskIndex = tasks.findIndex(t => t.id === currentTaskId);
                     if(taskIndex !== -1) tasks[taskIndex] = updatedTaskData;
-                    cascadeUpdates(currentTaskId);
+                    
+                    updatePlan.forEach(plannedUpdate => {
+                        const childIndex = tasks.findIndex(t => t.id === plannedUpdate.id);
+                        if (childIndex !== -1) {
+                            tasks[childIndex].start = plannedUpdate.start;
+                            tasks[childIndex].end = plannedUpdate.end;
+                        }
+                    });
                     renderGanttChart();
                     saveState();
                 };
 
-                if (conflictingDependents.length > 0) {
-                    showDependencyModal(conflictingDependents, 
-                        () => { // onConfirm
-                            performUpdate();
-                        },
-                        () => { // onCancel - just re-render to snap back
-                            renderGanttChart(); 
-                        }
-                    );
+                if (updatePlan.length > 0) {
+                    const dateShift = dayDiff(originalTaskData.start, updatedTaskData.start);
+                    const direction = dateShift > 0 ? 'forward' : 'backward';
+                    const modalText = `Shifting this task ${direction} by ${Math.abs(dateShift)} day(s) will also shift ${updatePlan.length} dependent task(s). Do you want to proceed?`;
+                    
+                    showDependencyModal(updatePlan, modalText, performUpdate, () => renderGanttChart());
                 } else {
-                    performUpdate();
+                    const taskIndex = tasks.findIndex(t => t.id === currentTaskId);
+                    if(taskIndex !== -1) tasks[taskIndex] = updatedTaskData;
+                    renderGanttChart();
+                    saveState();
                 }
-
                 currentTaskId = null;
             };
             
@@ -734,42 +757,39 @@ gantt_chart_html = """
                 }
 
                 const finalTaskData = { name, group, start: formatDateToDDMMYYYY(parseDate(startValue)), end: formatDateToDDMMYYYY(parseDate(endValue)), progress, dependencies, color };
-
-                const performUpdate = (isNew = false) => {
+                
+                const performUpdate = (isNew = false, updatePlan = []) => {
                     if (isNew) {
                         const newId = tasks.length > 0 ? Math.max(...tasks.map(t => t.id)) + 1 : 1;
                         tasks.push({ id: newId, ...finalTaskData });
                     } else {
                         const taskIndex = tasks.findIndex(t => t.id == id);
-                        if (taskIndex !== -1) {
-                            tasks[taskIndex] = { ...tasks[taskIndex], ...finalTaskData };
-                            cascadeUpdates(parseInt(id));
-                        }
+                        if (taskIndex !== -1) tasks[taskIndex] = { ...tasks[taskIndex], ...finalTaskData };
+                        
+                        updatePlan.forEach(plannedUpdate => {
+                            const childIndex = tasks.findIndex(t => t.id === plannedUpdate.id);
+                            if (childIndex !== -1) {
+                                tasks[childIndex].start = plannedUpdate.start;
+                                tasks[childIndex].end = plannedUpdate.end;
+                            }
+                        });
                     }
                     renderGanttChart();
                     closeModal();
                     saveState();
                 };
 
-                if (id) { // Editing existing task
-                    const dependents = tasks.filter(t => t.dependencies?.split(',').map(d => parseInt(d.trim())).includes(parseInt(id)));
-                    const conflictingDependents = [];
-                    const newParentEndDate = parseDate(finalTaskData.end);
-                    dependents.forEach(dep => {
-                        if (addDays(parseDate(dep.start), -1) < newParentEndDate) {
-                            conflictingDependents.push(dep);
-                        }
-                    });
-
-                    if (conflictingDependents.length > 0) {
-                         showDependencyModal(conflictingDependents, 
-                            () => performUpdate(false), // onConfirm
-                            () => {} // onCancel: Do nothing, just close the dependency modal. The task modal remains open for correction.
-                        );
+                if (id) {
+                    const task = tasks.find(t => t.id == id);
+                    const updatePlan = getDependencyUpdatePlan(task, parseDate(finalTaskData.end));
+                    
+                    if (updatePlan.length > 0) {
+                         const modalText = `Updating this task's dates will shift ${updatePlan.length} dependent task(s). Do you want to proceed?`;
+                         showDependencyModal(updatePlan, modalText, () => performUpdate(false, updatePlan), () => {});
                     } else {
                         performUpdate(false);
                     }
-                } else { // Adding new task
+                } else {
                     performUpdate(true);
                 }
             };
@@ -1286,5 +1306,5 @@ gantt_chart_html = """
 # Use Streamlit's component function to render the HTML.
 # The `height` parameter is set to ensure the component has enough space.
 # `scrolling`=True allows the inner content to scroll if it overflows the height.
-components.html(gantt_chart_html, height=900, scrolling=True)
+components.html(gantt_chart_html, height=800, scrolling=True)
 
