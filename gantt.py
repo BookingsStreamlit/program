@@ -333,20 +333,30 @@ gantt_chart_html = """
 
             const parseDate = (dateStr) => {
                 if (!dateStr || typeof dateStr !== 'string') return null;
+
+                // Try parsing dd/mm/yyyy
                 const partsDMY = dateStr.split('/');
                 if (partsDMY.length === 3) {
-                    const [day, month, year] = partsDMY;
-                    if (year.length === 4 && month.length > 0 && day.length > 0) {
-                        return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T00:00:00`);
+                    const [day, month, year] = partsDMY.map(Number);
+                    if (year > 1000 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                        return new Date(year, month - 1, day);
                     }
                 }
+
+                // Try parsing yyyy-mm-dd
                 const partsYMD = dateStr.split('-');
                 if (partsYMD.length === 3) {
-                    const [year, month, day] = partsYMD;
-                    if (year.length === 4 && month.length > 0 && day.length > 0) {
-                        return new Date(dateStr + 'T00:00:00');
+                    const [year, month, day] = partsYMD.map(Number);
+                    if (year > 1000 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                        return new Date(year, month - 1, day);
                     }
                 }
+                
+                // Fallback for Excel dates which might be Date objects
+                if (dateStr instanceof Date) {
+                    return new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate());
+                }
+
                 return null;
             };
 
@@ -1045,7 +1055,13 @@ gantt_chart_html = """
                         return cell;
                     }
                     ganttChartEl.appendChild(createDataCell(task.group || '', '1', '0px'));
-                    ganttChartEl.appendChild(createDataCell(task.name, '2', 'var(--group-width)'));
+                    
+                    const taskNameCell = createDataCell(task.name, '2', 'var(--group-width)');
+                    taskNameCell.classList.add('hover:bg-gray-50', 'cursor-pointer');
+                    taskNameCell.title = `Click to edit task: "${task.name}"`;
+                    taskNameCell.addEventListener('click', () => openModal(task));
+                    ganttChartEl.appendChild(taskNameCell);
+
                     ganttChartEl.appendChild(createDataCell(task.dependencies || '', '3', 'calc(var(--group-width) + var(--task-name-width))'));
                     const timelineCell = document.createElement('div');
                     timelineCell.className = 'relative border-b border-gray-200 task-row-timeline';
@@ -1055,12 +1071,19 @@ gantt_chart_html = """
                     const barWidth = (barDurationDays + 1) * pixelsPerDay;
                     const barColor = task.color || groupColors[task.group] || '#79D3C9';
                     timelineCell.innerHTML = `<div class="gantt-bar-wrapper" data-task-bar-id="${task.id}" style="position: absolute; left: ${startPos}px; width: ${barWidth}px; top:0; height: 100%"><div class="absolute top-1/2 -translate-y-1/2 left-0 w-full h-3/5 rounded-md gantt-bar-bg shadow-sm" style="background-color: ${barColor}40;"><div class="h-full rounded-md gantt-bar-progress" style="width: ${task.progress}%; background-color: ${barColor};"></div></div><div class="gantt-tooltip absolute bottom-full mb-2 w-max max-w-xs p-3 rounded-lg shadow-lg text-sm z-30" style="background-color: #006152; color: white;"><div class="font-bold">#${task.id}: ${task.name}</div><div>${task.start} to ${task.end}</div><div>Duration: ${barDurationDays + 1} days</div><div>Progress: <span class="font-semibold">${task.progress}%</span></div></div></div>`;
+                    
                     timelineCell.addEventListener('click', (e) => {
                         if (!e.target.closest('.gantt-bar-wrapper')) {
                             openModal(task);
                         }
                     });
+                    
                     ganttChartEl.appendChild(timelineCell);
+
+                    timelineCell.querySelector('.gantt-bar-wrapper')?.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        openModal(task);
+                    });
                 });
                 initDragAndDrop();
                 initColumnResizing();
@@ -1159,3 +1182,4 @@ gantt_chart_html = """
 # The `height` parameter is set to ensure the component has enough space.
 # `scrolling=True` allows the inner content to scroll if it overflows the height.
 components.html(gantt_chart_html, height=800, scrolling=True)
+
