@@ -1392,10 +1392,15 @@ with st.sidebar:
 
 # Handle messages from the component
 def handle_component_message(message):
-    if message and hasattr(message, 'get'):
-        if message.get('type') == 'GANTT_CHART_UPDATE':
-            st.session_state.gantt_data = message['data']
-            st.success("✅ Gantt chart updated!")
+    # The data sent from the custom component is expected to be a dictionary.
+    # This robustly checks if the message is a dict and has the correct 'type' key.
+    if isinstance(message, dict) and message.get('type') == 'GANTT_CHART_UPDATE':
+        data = message.get('data')
+        if data is not None:
+            st.session_state.gantt_data = data
+            # NOTE: st.success() was removed. It can cause an extra rerun which may
+            # lead to race conditions with the component's state. The visual 
+            # update in the chart itself provides sufficient user feedback.
 
 # Render the Gantt chart component
 result = components.html(
@@ -1418,6 +1423,8 @@ st.markdown(
     "**Gantt Chart Project Manager** | Built with Streamlit • "
     "Drag and drop to manage your project timeline efficiently"
 )
+
+
 
 
 # import streamlit as st
