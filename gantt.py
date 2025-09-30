@@ -20,6 +20,8 @@ st.title("🚀 Gantt Chart Project Manager")
 st.markdown("---")
 
 # Gantt Chart HTML Component
+# NOTE: All literal curly braces { and } in the HTML/JS/CSS below are escaped with {{ and }}
+# to avoid conflicts with Python's f-string formatting.
 gantt_chart_html = f"""
 <!DOCTYPE html>
 <html lang="en">
@@ -165,7 +167,7 @@ gantt_chart_html = f"""
                 <input type="text" id="project-subtitle" value="{st.session_state.gantt_data['projectSubtitle']}" class="text-sm opacity-90 bg-transparent border-none text-white w-full focus:outline-none focus:ring-1 focus:ring-white/50 rounded-md p-1 -m-1 mt-1">
             </div>
             <div class="flex items-center gap-2 flex-wrap">
-                 <button id="manage-groups-btn" class="px-3 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors text-sm focus:outline-none focus:ring-2 focus:ring-white">Manage Groups</button>
+                <button id="manage-groups-btn" class="px-3 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors text-sm focus:outline-none focus:ring-2 focus:ring-white">Manage Groups</button>
                 <select id="view-mode" class="bg-white/20 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-white">
                     <option value="day" class="text-black">Days</option>
                     <option value="week" class="text-black">Weeks</option>
@@ -180,7 +182,7 @@ gantt_chart_html = f"""
                 <button id="download-btn" title="Download Excel" class="p-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors focus:outline-none focus:ring-2 focus:ring-white">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
                 </button>
-                 <button id="clear-data-btn" title="Clear All Local Data" class="p-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors focus:outline-none focus:ring-2 focus:ring-white">
+                <button id="clear-data-btn" title="Clear All Local Data" class="p-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors focus:outline-none focus:ring-2 focus:ring-white">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                         <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" />
                     </svg>
@@ -190,7 +192,7 @@ gantt_chart_html = f"""
                         <path fill-rule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v3.586l-1.293-1.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V8z" clip-rule="evenodd" />
                     </svg>
                 </button>
-                 <button id="print-btn" title="Print to PDF" class="p-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors focus:outline-none focus:ring-2 focus:ring-white">
+                <button id="print-btn" title="Print to PDF" class="p-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors focus:outline-none focus:ring-2 focus:ring-white">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v6a2 2 0 002 2h12a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clip-rule="evenodd" /></svg>
                 </button>
                 <button id="add-task-btn" class="px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors focus:outline-none focus:ring-2 focus:ring-white">
@@ -203,7 +205,7 @@ gantt_chart_html = f"""
             <div id="gantt-chart" class="relative"></div>
             <svg id="dependency-lines"></svg>
         </div>
-         <footer class="p-4 bg-gray-50 border-t border-gray-200 text-xs text-gray-500 text-center">
+        <footer class="p-4 bg-gray-50 border-t border-gray-200 text-xs text-gray-500 text-center">
             <p>Generated on: <span id="current-date">{datetime.now().strftime("%Y-%m-%d %H:%M")}</span></p>
             <p class="mt-1">Created by Dave Maher</p>
         </footer>
@@ -234,8 +236,8 @@ gantt_chart_html = f"""
                 <input type="hidden" id="task-id">
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                         <label for="task-group" class="block text-sm font-medium text-gray-700 mb-1">Group</label>
-                         <select id="task-group" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"></select>
+                        <label for="task-group" class="block text-sm font-medium text-gray-700 mb-1">Group</label>
+                        <select id="task-group" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"></select>
                     </div>
                     <div>
                         <label for="task-name" class="block text-sm font-medium text-gray-700 mb-1">Task Name</label>
@@ -262,7 +264,7 @@ gantt_chart_html = f"""
                         <input type="range" id="task-progress" min="0" max="100" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                     </div>
                     <div>
-                         <label for="task-color" class="block text-sm font-medium text-gray-700 mb-1">Color</label>
+                        <label for="task-color" class="block text-sm font-medium text-gray-700 mb-1">Color</label>
                         <input type="color" id="task-color" value="#25B8A3" class="w-10 h-10 p-1 border border-gray-300 rounded-lg disabled:opacity-50">
                     </div>
                 </div>
@@ -294,7 +296,7 @@ gantt_chart_html = f"""
         // Initial state from Streamlit
         const initialState = {json.dumps(st.session_state.gantt_data)};
         
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', () => {{
             // --- STATE & CONFIGURATION ---
             let viewMode = 'day'; 
             let tasks = initialState.tasks || []; 
@@ -564,7 +566,7 @@ gantt_chart_html = f"""
                             newDates.set(taskId, {{ ...task }});
                         }}
                     }} else {{
-                         newDates.set(taskId, {{ ...task }});
+                        newDates.set(taskId, {{ ...task }});
                     }}
                 }}
                 
@@ -802,8 +804,8 @@ gantt_chart_html = f"""
                     const updatePlan = getDependencyUpdatePlan(finalTaskData);
                     
                     if (updatePlan.length > 0) {{
-                         const modalText = `Updating this task's dates will shift ${{updatePlan.length}} dependent task(s). Do you want to proceed?`;
-                         showDependencyModal(updatePlan, modalText, () => performUpdate(false, updatePlan), () => {{}});
+                        const modalText = `Updating this task's dates will shift ${{updatePlan.length}} dependent task(s). Do you want to proceed?`;
+                        showDependencyModal(updatePlan, modalText, () => performUpdate(false, updatePlan), () => {{}});
                     }} else {{
                         performUpdate(false);
                     }}
@@ -1121,7 +1123,7 @@ gantt_chart_html = f"""
                         d = addDays(d, 1);
                     }}
                 }} else {{
-                     let unitStartDate = new Date(chartStartDate);
+                    let unitStartDate = new Date(chartStartDate);
                     while (unitStartDate <= chartEndDate) {{
                         let unitEndDate, label, subLabel;
                         const year = unitStartDate.getUTCFullYear();
@@ -1324,54 +1326,29 @@ with st.sidebar:
         sample_data = {
             'tasks': [
                 {
-                    'id': 1,
-                    'name': 'Project Planning',
-                    'group': 'Planning',
-                    'start': '01/01/2024',
-                    'end': '15/01/2024',
-                    'progress': 100,
-                    'dependencies': '',
-                    'color': '#79D3C9'
+                    'id': 1, 'name': 'Project Planning', 'group': 'Planning', 
+                    'start': '01/01/2024', 'end': '15/01/2024', 'progress': 100, 
+                    'dependencies': '', 'color': '#79D3C9'
                 },
                 {
-                    'id': 2,
-                    'name': 'Design Phase',
-                    'group': 'Design',
-                    'start': '16/01/2024',
-                    'end': '31/01/2024',
-                    'progress': 75,
-                    'dependencies': '1',
-                    'color': '#25B8A3'
+                    'id': 2, 'name': 'Design Phase', 'group': 'Design', 
+                    'start': '16/01/2024', 'end': '31/01/2024', 'progress': 75, 
+                    'dependencies': '1', 'color': '#25B8A3'
                 },
                 {
-                    'id': 3,
-                    'name': 'Development',
-                    'group': 'Development',
-                    'start': '01/02/2024',
-                    'end': '29/02/2024',
-                    'progress': 50,
-                    'dependencies': '2',
-                    'color': '#006152'
+                    'id': 3, 'name': 'Development', 'group': 'Development', 
+                    'start': '01/02/2024', 'end': '29/02/2024', 'progress': 50, 
+                    'dependencies': '2', 'color': '#006152'
                 },
                 {
-                    'id': 4,
-                    'name': 'Testing',
-                    'group': 'Testing',
-                    'start': '01/03/2024',
-                    'end': '15/03/2024',
-                    'progress': 25,
-                    'dependencies': '3',
-                    'color': '#FF6B6B'
+                    'id': 4, 'name': 'Testing', 'group': 'Testing', 
+                    'start': '01/03/2024', 'end': '15/03/2024', 'progress': 25, 
+                    'dependencies': '3', 'color': '#FF6B6B'
                 },
                 {
-                    'id': 5,
-                    'name': 'Deployment',
-                    'group': 'Deployment',
-                    'start': '16/03/2024',
-                    'end': '31/03/2024',
-                    'progress': 0,
-                    'dependencies': '4',
-                    'color': '#4ECDC4'
+                    'id': 5, 'name': 'Deployment', 'group': 'Deployment', 
+                    'start': '16/03/2024', 'end': '31/03/2024', 'progress': 0, 
+                    'dependencies': '4', 'color': '#4ECDC4'
                 }
             ],
             'projectGroups': [
@@ -1441,6 +1418,7 @@ st.markdown(
     "**Gantt Chart Project Manager** | Built with Streamlit • "
     "Drag and drop to manage your project timeline efficiently"
 )
+
 
 # import streamlit as st
 # import streamlit.components.v1 as components
