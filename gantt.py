@@ -15,9 +15,6 @@ if 'gantt_data' not in st.session_state:
         'projectSubtitle': 'Interactive Gantt Chart'
     }
 
-# Main title
-st.title("🚀 Gantt Chart Project Manager")
-st.markdown("---")
 
 # Gantt Chart HTML Component
 # NOTE: All literal curly braces { and } in the HTML/JS/CSS below are escaped with {{ and }}
