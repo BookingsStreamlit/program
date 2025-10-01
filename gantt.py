@@ -1433,7 +1433,7 @@ with st.sidebar:
                 {'name': 'Testing', 'color': '#FF6B6B'},
                 {'name': 'Deployment', 'color': '#4ECDC4'}
             ],
-            'projectTitle': 'Software Development Project',
+            'projectTitle': 'Example Development Project',
             'projectSubtitle': 'Q1 2024 Timeline'
         }
         st.session_state.gantt_data = sample_data
@@ -2858,7 +2858,7 @@ st.markdown(
 #                 {'name': 'Testing', 'color': '#FF6B6B'},
 #                 {'name': 'Deployment', 'color': '#4ECDC4'}
 #             ],
-#             'projectTitle': 'Software Development Project',
+#             'projectTitle': 'Example Development Project',
 #             'projectSubtitle': 'Q1 2024 Timeline'
 #         }
 #         st.session_state.gantt_data = sample_data
